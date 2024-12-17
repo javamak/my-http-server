@@ -4,7 +4,15 @@
 </head>
 
 <body>
-    <h1> Header2</h1>
+<h1> Header2</h1>
+<script language="JavaScript">
+    var xhr = new XMLHttpRequest();
+xhr.open("POST", 'http://localhost:9000/index.html', true);
+xhr.setRequestHeader('Content-Type', 'application/json');
+xhr.send(JSON.stringify({
+'name': 'arun',
+}));
+</script>
 lorem ipsum
 </body>
 </html>
