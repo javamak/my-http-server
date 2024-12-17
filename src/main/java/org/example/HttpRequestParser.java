@@ -1,7 +1,6 @@
 package org.example;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -21,24 +20,49 @@ public class HttpRequestParser {
     var httpRequest = new HttpRequest();
 
     var reader = new BufferedReader(new InputStreamReader((inputStream)));
-    var reqLine = reader.readLine();
-    var arr = reqLine.split(" ");
-    httpRequest.setHttpMethod(arr[0].trim());
-    httpRequest.setRequestPath(arr[1].trim());
-    httpRequest.setHttpVersion(arr[2].trim());
+
+    parseRequestLine(reader.readLine(), httpRequest);
 
     String header = reader.readLine();
 
     while (!header.isBlank()) {
       appendHeaderParameter(header, httpRequest);
       header = reader.readLine();
-
     }
 
     readBody(reader, httpRequest);
 
     return httpRequest;
   }
+
+  private void parseRequestLine(String reqLine, HttpRequest httpRequest) {
+    var hasQuery = reqLine.indexOf("?");
+    if (hasQuery > -1) {
+
+      var firstSpace = reqLine.indexOf(' ');
+      var lastSpace = reqLine.lastIndexOf(' ');
+
+      httpRequest.setHttpMethod(reqLine.substring(0, firstSpace).trim());
+      httpRequest.setHttpVersion(reqLine.substring(lastSpace).trim());
+
+      var reqPathWithQuery = reqLine.substring(firstSpace, lastSpace).trim();
+
+      var arr = reqPathWithQuery.split("\\?");
+      httpRequest.setRequestPath(arr[0].trim());
+      var queryString = arr[1];
+      arr = queryString.split("&");
+      for (String s : arr) {
+        var queryArr = s.split("=");
+        httpRequest.getAllQueryString().put(queryArr[0].trim(), queryArr[1].trim());
+      }
+    } else {
+      var arr = reqLine.split(" ");
+      httpRequest.setHttpMethod(arr[0].trim());
+      httpRequest.setRequestPath(arr[1].trim());
+      httpRequest.setHttpVersion(arr[2].trim());
+    }
+  }
+
 
 
   private void readBody(BufferedReader reader, HttpRequest request) throws IOException {
@@ -63,6 +87,8 @@ public class HttpRequestParser {
     if (idx == -1) {
       throw new HttpFormatException("Invalid Header Parameter: " + header);
     }
-    httpRequest.getHeaders().put(header.substring(0, idx).toLowerCase(), header.substring(idx + 1).trim());
+    httpRequest
+        .getHeaders()
+        .put(header.substring(0, idx).toLowerCase(), header.substring(idx + 1).trim());
   }
 }

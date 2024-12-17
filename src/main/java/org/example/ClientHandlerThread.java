@@ -97,6 +97,7 @@ public class ClientHandlerThread extends Thread {
       bw = new BufferedOutputStream(socket.getOutputStream());
 
       var httpRequest = HttpRequestParser.getInstance().parseRequest(socket.getInputStream());
+      System.out.println(httpRequest);
       generateHttpResponse(httpRequest, httpResponse);
     } catch (IOException e) {
       e.printStackTrace();
