@@ -15,13 +15,16 @@ public class HttpRequestParser {
     return _INSTANCE;
   }
 
-  public HttpRequest parseRequest(InputStream inputStream) throws IOException, HttpFormatException {
-
-    var httpRequest = new HttpRequest();
+  public void parseRequest(InputStream inputStream, HttpRequest httpRequest) throws IOException, HttpFormatException {
 
     var reader = new BufferedReader(new InputStreamReader((inputStream)));
+    var requestLine = reader.readLine();
 
-    parseRequestLine(reader.readLine(), httpRequest);
+    if(requestLine == null || requestLine.isBlank()) {
+      return;
+    }
+
+    parseRequestLine(requestLine, httpRequest);
 
     String header = reader.readLine();
 
@@ -31,8 +34,6 @@ public class HttpRequestParser {
     }
 
     readBody(reader, httpRequest);
-
-    return httpRequest;
   }
 
   private void parseRequestLine(String reqLine, HttpRequest httpRequest) {

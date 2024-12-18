@@ -12,6 +12,7 @@ public class HttpResponse {
   public HttpResponse() {
     headers = new HashMap<>();
     contentType = "Content-Type: text/html; charset=UTF-8";
+    response = new byte[0];
   }
 
   public Map<String, String> getHeaders() {

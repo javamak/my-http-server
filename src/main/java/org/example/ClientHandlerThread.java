@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 
@@ -22,45 +24,55 @@ public class ClientHandlerThread extends Thread {
     this.pageCache = cache;
   }
 
-  private void generateHttpResponse(HttpRequest request, HttpResponse response) {
+  private void generateHttpResponse(HttpRequest request, HttpResponse response) throws IOException {
 
-    byte[] responseContent = new byte[0];
-    HttpStatus httpStatus = HttpStatus.OK;
-    try {
-      responseContent = pageCache.readFromFileOrCache(request.getRequestPath());
-    } catch (IOException e) {
-      httpStatus = HttpStatus.NOT_FOUND;
+    byte[] responseContent = pageCache.readFromFileOrCache(request.getRequestPath());
+
+    response.setHttpStatus(HttpStatus.OK);
+    response.setResponse(responseContent);
+  }
+
+  void validateResponseAndCompress(HttpRequest httpRequest, HttpResponse httpResponse) {
+    var acceptedEncodings = httpRequest.getHeaders().get("accept-encoding");
+
+    if (httpResponse.getResponse() == null
+            || httpResponse.getResponse().length == 0) {
+      // Setting the body as error description.
+      if (!(httpResponse.getHttpStatus().getCode() >= 200
+              && httpResponse.getHttpStatus().getCode() < 300)) {
+        httpResponse.setResponse(
+                httpResponse.getHttpStatus().getDescription().getBytes(StandardCharsets.UTF_8));
+      }
     }
-    var acceptedEncodings = request.getHeaders().get("accept-encoding");
-    if (responseContent.length > 0
-        && acceptedEncodings != null
+
+    if (acceptedEncodings != null
         && acceptedEncodings.contains("gzip")) {
 
-      response.getHeaders().put("Content-Encoding", "gzip");
-      response.getHeaders().put("Vary", "Accept-Encoding");
+      httpResponse.getHeaders().put("Content-Encoding", "gzip");
+      httpResponse.getHeaders().put("Vary", "Accept-Encoding");
       var byteArrayOutputStream = new ByteArrayOutputStream();
       GZIPOutputStream gzip = null;
       try {
         gzip = new GZIPOutputStream(byteArrayOutputStream);
-        gzip.write(responseContent);
+        gzip.write(httpResponse.getResponse());
         gzip.finish();
         gzip.close();
-        responseContent = byteArrayOutputStream.toByteArray();
+        httpResponse.setResponse(byteArrayOutputStream.toByteArray());
         byteArrayOutputStream.close();
       } catch (IOException e) {
-        httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
-        responseContent = HttpStatus.INTERNAL_SERVER_ERROR.getDescription().getBytes();
+        httpResponse.setHttpStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+        httpResponse.setResponse(HttpStatus.INTERNAL_SERVER_ERROR.getDescription().getBytes());
       }
     }
-
-    response.setHttpStatus(httpStatus);
-    response.setResponse(responseContent);
-    response.getHeaders().put("Content-Length", "" + responseContent.length);
   }
 
-  private void writeResponseToSocket(OutputStream bw, HttpResponse httpResponse) {
+  private void writeResponseToSocket(
+      OutputStream bw, HttpResponse httpResponse, HttpRequest httpRequest) {
     if (bw != null) {
       try {
+
+        validateResponseAndCompress(httpRequest, httpResponse);
+
         bw.write("HTTP/1.1 ".getBytes());
         bw.write((httpResponse.getHttpStatus().toString()).getBytes());
         bw.write(NEWLINE_BYTES);
@@ -70,10 +82,11 @@ public class ClientHandlerThread extends Thread {
         }
         bw.write(httpResponse.getContentType().getBytes());
         bw.write(NEWLINE_BYTES);
+        bw.write(("Content-Length: " + httpResponse.getResponse().length).getBytes());
+        bw.write(NEWLINE_BYTES);
         bw.write(NEWLINE_BYTES);
 
         bw.write(httpResponse.getResponse());
-        bw.write(NEWLINE_BYTES);
 
         bw.flush();
         bw.close();
@@ -92,25 +105,28 @@ public class ClientHandlerThread extends Thread {
   public void run() {
     OutputStream bw = null;
     var httpResponse = new HttpResponse();
+    var httpRequest = new HttpRequest();
     try {
 
       bw = new BufferedOutputStream(socket.getOutputStream());
 
-      var httpRequest = HttpRequestParser.getInstance().parseRequest(socket.getInputStream());
+      HttpRequestParser.getInstance().parseRequest(socket.getInputStream(), httpRequest);
       System.out.println(httpRequest);
       generateHttpResponse(httpRequest, httpResponse);
+    } catch (SocketTimeoutException e) {
+      e.printStackTrace();
+      httpResponse.setHttpStatus(HttpStatus.REQUEST_TIMEOUT);
     } catch (IOException e) {
       e.printStackTrace();
       httpResponse.setHttpStatus(HttpStatus.NOT_FOUND);
     } catch (HttpFormatException e) {
       e.printStackTrace();
       httpResponse.setHttpStatus(HttpStatus.BAD_REQUEST);
-
     } catch (Exception e) {
       e.printStackTrace();
       httpResponse.setHttpStatus(HttpStatus.INTERNAL_SERVER_ERROR);
     } finally {
-      writeResponseToSocket(bw, httpResponse);
+      writeResponseToSocket(bw, httpResponse, httpRequest);
     }
   }
 }

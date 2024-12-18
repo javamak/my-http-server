@@ -2,7 +2,10 @@ package org.example;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Hello world! */
@@ -25,6 +28,8 @@ public class App {
         var pageCache = PageCache.getINSTANCE();
         while (isRunning.get()) {
           var socket = serverSocket.accept();
+          System.out.println("Request received");
+          socket.setSoTimeout(10000);
           executor.submit(new ClientHandlerThread(socket, pageCache));
         }
       }
